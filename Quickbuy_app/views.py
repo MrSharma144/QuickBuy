@@ -1,5 +1,8 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
 from django.http import HttpResponse
@@ -10,19 +13,78 @@ from .models import Product, Order, OrderItem
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+# ─────────────────────────────────────────────
+# Home
+# ─────────────────────────────────────────────
 def home(request):
     products = Product.objects.all()
-    orders = Order.objects.filter(status='paid').order_by('-created_at')
+    orders = []
+    if request.user.is_authenticated:
+        orders = Order.objects.filter(user=request.user, status='paid').order_by('-created_at')
     return render(request, 'home.html', {'products': products, 'orders': orders})
 
 
+# ─────────────────────────────────────────────
+# Auth — Signup
+# ─────────────────────────────────────────────
+def signup_view(request):
+    if request.user.is_authenticated:
+        return redirect('home')
+
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            messages.success(request, f'Welcome, {user.username}! Your account has been created.')
+            return redirect('home')
+    else:
+        form = UserCreationForm()
+
+    return render(request, 'signup.html', {'form': form})
+
+
+# ─────────────────────────────────────────────
+# Auth — Login
+# ─────────────────────────────────────────────
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect('home')
+
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            messages.success(request, f'Welcome back, {user.username}!')
+            return redirect(request.GET.get('next', 'home'))
+        else:
+            messages.error(request, 'Invalid username or password.')
+    else:
+        form = AuthenticationForm()
+
+    return render(request, 'login.html', {'form': form})
+
+
+# ─────────────────────────────────────────────
+# Auth — Logout
+# ─────────────────────────────────────────────
+def logout_view(request):
+    logout(request)
+    messages.info(request, 'You have been logged out.')
+    return redirect('login')
+
+
+# ─────────────────────────────────────────────
+# Stripe Checkout
+# ─────────────────────────────────────────────
+@login_required
 @require_POST
 def create_checkout_session(request):
     products = Product.objects.all()
 
-    # Build line items from form quantities
     line_items = []
-    cart = {}  # { product_id: quantity }
+    cart = {}
 
     for product in products:
         qty = int(request.POST.get(f'quantity_{product.id}', 0))
@@ -40,12 +102,10 @@ def create_checkout_session(request):
             })
             cart[product.id] = qty
 
-    # Guard: nothing selected
     if not line_items:
         messages.warning(request, 'Please add at least one item before checking out.')
         return redirect('home')
 
-    # Build absolute URLs for Stripe redirect
     base_url = request.build_absolute_uri('/').rstrip('/')
     success_url = f"{base_url}/payment/success/?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url  = f"{base_url}/payment/cancel/"
@@ -62,20 +122,18 @@ def create_checkout_session(request):
         messages.error(request, f'Payment error: {str(e)}')
         return redirect('home')
 
-    # Calculate total amount locally
     total = sum(
         Product.objects.get(pk=pid).price * qty
         for pid, qty in cart.items()
     )
 
-    # Create a PENDING order (will be marked paid on success)
     order = Order.objects.create(
+        user=request.user,
         stripe_checkout_id=session.id,
         total_amount=total,
         status='pending',
     )
 
-    # Save order items
     for pid, qty in cart.items():
         product = Product.objects.get(pk=pid)
         OrderItem.objects.create(
@@ -88,6 +146,9 @@ def create_checkout_session(request):
     return redirect(session.url, permanent=False)
 
 
+# ─────────────────────────────────────────────
+# Payment Success
+# ─────────────────────────────────────────────
 def payment_success(request):
     session_id = request.GET.get('session_id')
     if not session_id:
@@ -95,13 +156,11 @@ def payment_success(request):
         return redirect('home')
 
     try:
-        # Retrieve session from Stripe to verify payment
         session = stripe.checkout.Session.retrieve(session_id)
     except stripe.error.StripeError:
         messages.error(request, 'Could not verify payment. Contact support.')
         return redirect('home')
 
-    # Mark order as paid (idempotent – safe on refresh)
     order = get_object_or_404(Order, stripe_checkout_id=session_id)
 
     if session.payment_status == 'paid' and order.status != 'paid':
@@ -112,8 +171,10 @@ def payment_success(request):
     return redirect('home')
 
 
+# ─────────────────────────────────────────────
+# Payment Cancel
+# ─────────────────────────────────────────────
 def payment_cancel(request):
-    # Delete the pending order so it doesn't pollute the DB
     session_id = request.GET.get('session_id')
     if session_id:
         Order.objects.filter(stripe_checkout_id=session_id, status='pending').delete()
