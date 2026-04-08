@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}QuickBuy – Shop Now{% endblock %}
+
+{% block content %}
+<h1 class="mb-4 fw-bold">🛍️ Our Products</h1>
+<p class="text-muted">Select quantities and click Buy to checkout securely.</p>
+
+<!-- Products will be added in Step 5 -->
+<div class="row g-4 mt-2">
+    {% for product in products %}
+    <div class="col-md-4">
+        <div class="card product-card shadow-sm h-100">
+            <img src="{{ product.image_url }}" alt="{{ product.name }}">
+            <div class="card-body">
+                <h5 class="card-title fw-bold">{{ product.name }}</h5>
+                <p class="text-muted small">{{ product.description }}</p>
+                <p class="fw-bold text-dark">${{ product.price }}</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
