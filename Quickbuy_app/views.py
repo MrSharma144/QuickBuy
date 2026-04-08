@@ -1,11 +1,10 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
-from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth import login, logout
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
-from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponseRedirect
 import stripe
 
 from .models import Product, Order, OrderItem
@@ -20,7 +19,9 @@ def home(request):
     products = Product.objects.all()
     orders = []
     if request.user.is_authenticated:
-        orders = Order.objects.filter(user=request.user, status='paid').order_by('-created_at')
+        orders = Order.objects.filter(
+            user=request.user, status='paid'
+        ).prefetch_related('items__product').order_by('-created_at')
     return render(request, 'home.html', {'products': products, 'orders': orders})
 
 
@@ -57,7 +58,7 @@ def login_view(request):
             user = form.get_user()
             login(request, user)
             messages.success(request, f'Welcome back, {user.username}!')
-            return redirect(request.GET.get('next', 'home'))
+            return redirect('home')
         else:
             messages.error(request, 'Invalid username or password.')
     else:
@@ -78,16 +79,20 @@ def logout_view(request):
 # ─────────────────────────────────────────────
 # Stripe Checkout
 # ─────────────────────────────────────────────
-@login_required
 @require_POST
 def create_checkout_session(request):
-    products = Product.objects.all()
+    if not request.user.is_authenticated:
+        messages.warning(request, 'Please log in to proceed with checkout.')
+        return redirect('login')
+
+    # Single DB query — fetch all products into a dict for O(1) lookups
+    products = {p.id: p for p in Product.objects.all()}
 
     line_items = []
-    cart = {}
+    cart = {}  # { product_id: quantity }
 
-    for product in products:
-        qty = int(request.POST.get(f'quantity_{product.id}', 0))
+    for pid, product in products.items():
+        qty = int(request.POST.get(f'quantity_{pid}', 0))
         if qty > 0:
             line_items.append({
                 'price_data': {
@@ -100,7 +105,7 @@ def create_checkout_session(request):
                 },
                 'quantity': qty,
             })
-            cart[product.id] = qty
+            cart[pid] = qty
 
     if not line_items:
         messages.warning(request, 'Please add at least one item before checking out.')
@@ -122,10 +127,8 @@ def create_checkout_session(request):
         messages.error(request, f'Payment error: {str(e)}')
         return redirect('home')
 
-    total = sum(
-        Product.objects.get(pk=pid).price * qty
-        for pid, qty in cart.items()
-    )
+    # Calculate total locally — no extra DB queries
+    total = sum(products[pid].price * qty for pid, qty in cart.items())
 
     order = Order.objects.create(
         user=request.user,
@@ -134,16 +137,21 @@ def create_checkout_session(request):
         status='pending',
     )
 
-    for pid, qty in cart.items():
-        product = Product.objects.get(pk=pid)
-        OrderItem.objects.create(
+    # Bulk-create order items — one INSERT instead of N
+    OrderItem.objects.bulk_create([
+        OrderItem(
             order=order,
-            product=product,
+            product=products[pid],
             quantity=qty,
-            unit_price=product.price,
+            unit_price=products[pid].price,
         )
+        for pid, qty in cart.items()
+    ])
 
-    return redirect(session.url, permanent=False)
+    # HTTP 303 See Other — browser uses GET on redirect, no POST resubmission
+    response = HttpResponseRedirect(session.url)
+    response.status_code = 303
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -163,6 +171,7 @@ def payment_success(request):
 
     order = get_object_or_404(Order, stripe_checkout_id=session_id)
 
+    # Idempotent — only update once even if this URL is hit multiple times
     if session.payment_status == 'paid' and order.status != 'paid':
         order.status = 'paid'
         order.save()

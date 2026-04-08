@@ -2,7 +2,43 @@
 
 {% block title %}QuickBuy – Shop Now{% endblock %}
 
+{% block extra_css %}
+<style>
+#checkout-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 46, 0.88);
+    backdrop-filter: blur(6px);
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    color: white;
+}
+#checkout-overlay.show { display: flex; }
+.overlay-spinner {
+    width: 64px; height: 64px;
+    border: 5px solid rgba(255,255,255,0.15);
+    border-top-color: #6c63ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.overlay-text { font-size: 1.15rem; font-weight: 700; }
+.overlay-sub  { font-size: 0.85rem; opacity: 0.6; }
+</style>
+{% endblock %}
+
 {% block content %}
+
+<!-- Loading Overlay -->
+<div id="checkout-overlay">
+    <div class="overlay-spinner"></div>
+    <p class="overlay-text">Connecting to Stripe…</p>
+    <p class="overlay-sub">Please wait, do not close this tab.</p>
+</div>
 
 <!-- Hero Section -->
 <section class="hero-section text-center">
@@ -172,10 +208,11 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
-        // Disable button to prevent double-submit
+        // Show full-page overlay + disable button to prevent double-submit
+        document.getElementById('checkout-overlay').classList.add('show');
         const btn = document.getElementById('buy-btn');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Stripe…';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting…';
     });
 </script>
 {% endblock %}
