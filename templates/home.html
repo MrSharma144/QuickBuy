@@ -4,99 +4,178 @@
 
 {% block content %}
 
-<!-- Hero -->
-<div class="text-center mb-5">
-    <h1 class="fw-bold display-5">🛍️ QuickBuy Store</h1>
-    <p class="text-muted fs-5">Pick your items, set quantities, and checkout in seconds.</p>
-</div>
+<!-- Hero Section -->
+<section class="hero-section text-center">
+    <div class="container">
+        <div class="hero-badge">🔒 Secure Stripe Payments · Test Mode</div>
+        <h1 class="display-4 fw-800 mb-3" style="font-weight:800;">Shop. Pay. Done.</h1>
+        <p class="fs-5 mb-0" style="color:rgba(255,255,255,0.7);">
+            Pick your items, set quantities, and checkout in seconds.
+        </p>
+    </div>
+</section>
 
-<!-- Product Form -->
-<form action="{% url 'create_checkout_session' %}" method="POST" id="buy-form">
-    {% csrf_token %}
+<!-- Product Section -->
+<div class="container" style="margin-top: -20px; position: relative; z-index: 1;">
 
-    <div class="row g-4">
-        {% for product in products %}
-        <div class="col-md-4">
-            <div class="card product-card shadow-sm h-100">
-                <img src="{{ product.image_url }}" alt="{{ product.name }}">
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title fw-bold">{{ product.name }}</h5>
-                    <p class="text-muted small flex-grow-1">{{ product.description }}</p>
-                    <p class="fw-bold fs-5 text-dark mb-3">${{ product.price }}</p>
+    <form action="{% url 'create_checkout_session' %}" method="POST" id="buy-form">
+        {% csrf_token %}
 
-                    <!-- Quantity input -->
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-light">Qty</span>
-                        <input
-                            type="number"
-                            name="quantity_{{ product.id }}"
-                            id="qty_{{ product.id }}"
-                            class="form-control"
-                            value="0"
-                            min="0"
-                            max="99"
-                        >
+        <!-- Order Summary Bar -->
+        <div class="d-flex justify-content-between align-items-center mb-4 px-1">
+            <h2 class="section-title mb-0">Our Products</h2>
+            <span id="cart-summary" class="text-muted small fw-semibold"></span>
+        </div>
+
+        <div class="row g-4">
+            {% for product in products %}
+            <div class="col-lg-4 col-md-6">
+                <div class="card product-card shadow h-100">
+                    <div class="img-wrapper">
+                        <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}">
+                    </div>
+                    <div class="card-body d-flex flex-column p-4">
+                        <h5 class="card-title fw-bold mb-1">{{ product.name }}</h5>
+                        <p class="text-muted small flex-grow-1">{{ product.description }}</p>
+                        <p class="price-tag mb-3">${{ product.price }}</p>
+
+                        <!-- Quantity Controls -->
+                        <div class="qty-wrapper">
+                            <button type="button" class="qty-btn qty-dec" data-target="qty_{{ product.id }}">−</button>
+                            <input
+                                type="number"
+                                name="quantity_{{ product.id }}"
+                                id="qty_{{ product.id }}"
+                                class="qty-input qty-field"
+                                value="0"
+                                min="0"
+                                max="99"
+                                data-price="{{ product.price }}"
+                            >
+                            <button type="button" class="qty-btn qty-inc" data-target="qty_{{ product.id }}">+</button>
+                            <span class="ms-auto text-muted small">× ${{ product.price }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
 
-    <!-- Buy Button -->
-    <div class="text-center mt-5">
-        <button type="submit" class="btn btn-buy btn-lg px-5 py-3" id="buy-btn">
-            <i class="bi bi-lock-fill me-2"></i>Buy Now – Secure Checkout
-        </button>
-        <p class="text-muted small mt-2">
-            <i class="bi bi-shield-check me-1"></i>Powered by Stripe · Test mode
-        </p>
-    </div>
-</form>
+        <!-- Buy Button -->
+        <div class="text-center my-5">
+            <button type="submit" class="btn btn-buy" id="buy-btn">
+                <i class="bi bi-lock-fill me-2"></i>
+                <span id="btn-text">Buy Now — Secure Checkout</span>
+            </button>
+            <p class="text-muted small mt-3">
+                <i class="bi bi-credit-card me-1"></i>Test card: <code>4242 4242 4242 4242</code> · any future date · any CVC
+            </p>
+        </div>
 
-<!-- My Orders Section -->
-{% if orders %}
-<hr class="my-5">
-<h2 class="fw-bold mb-4">📦 My Orders</h2>
-<div class="row g-3">
-    {% for order in orders %}
-    <div class="col-12">
-        <div class="card border-0 shadow-sm rounded-3 p-3">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                <div>
-                    <span class="fw-bold">Order #{{ order.id }}</span>
-                    <span class="order-badge ms-2">✅ Paid</span>
-                    <p class="text-muted small mb-1 mt-1">
-                        {{ order.created_at|date:"N j, Y · g:i A" }}
-                    </p>
-                    <ul class="mb-0 small">
-                        {% for item in order.items.all %}
-                        <li>{{ item.quantity }}× {{ item.product.name }} — ${{ item.unit_price }} each</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <div class="text-end">
-                    <span class="fs-5 fw-bold">${{ order.total_amount }}</span>
+    </form>
+
+    <!-- ──────────── My Orders ──────────── -->
+    {% if orders %}
+    <div class="mb-5">
+        <hr class="mb-4">
+        <h2 class="section-title mb-4">My Orders</h2>
+        <div class="d-flex flex-column gap-3">
+            {% for order in orders %}
+            <div class="card order-card shadow-sm p-4">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <span class="fw-bold">Order #{{ order.id }}</span>
+                            <span class="paid-badge">✓ PAID</span>
+                        </div>
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-calendar3 me-1"></i>{{ order.created_at|date:"N j, Y" }}
+                            &nbsp;·&nbsp;
+                            <i class="bi bi-clock me-1"></i>{{ order.created_at|date:"g:i A" }}
+                        </p>
+                        <ul class="list-unstyled mb-0">
+                            {% for item in order.items.all %}
+                            <li class="small text-muted">
+                                <i class="bi bi-dot"></i>
+                                {{ item.quantity }}× <strong>{{ item.product.name }}</strong> — ${{ item.unit_price }} each
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    <div class="text-end">
+                        <div class="order-total">${{ order.total_amount }}</div>
+                        <span class="text-muted small">Total charged</span>
+                    </div>
                 </div>
             </div>
+            {% endfor %}
         </div>
     </div>
-    {% endfor %}
-</div>
-{% endif %}
+    {% endif %}
 
+</div><!-- /container -->
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Prevent buy if all quantities are 0
+    // ── Qty +/- buttons ──
+    document.querySelectorAll('.qty-dec').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = document.getElementById(btn.dataset.target);
+            if (parseInt(input.value) > 0) input.value = parseInt(input.value) - 1;
+            updateSummary();
+        });
+    });
+    document.querySelectorAll('.qty-inc').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = document.getElementById(btn.dataset.target);
+            if (parseInt(input.value) < 99) input.value = parseInt(input.value) + 1;
+            updateSummary();
+        });
+    });
+    document.querySelectorAll('.qty-field').forEach(input => {
+        input.addEventListener('input', updateSummary);
+    });
+
+    // ── Live cart summary ──
+    function updateSummary() {
+        let totalQty = 0, totalPrice = 0;
+        document.querySelectorAll('.qty-field').forEach(input => {
+            const qty = Math.max(0, parseInt(input.value) || 0);
+            const price = parseFloat(input.dataset.price) || 0;
+            totalQty += qty;
+            totalPrice += qty * price;
+        });
+        const summary = document.getElementById('cart-summary');
+        const btnText = document.getElementById('btn-text');
+        if (totalQty > 0) {
+            summary.textContent = `${totalQty} item${totalQty > 1 ? 's' : ''} · $${totalPrice.toFixed(2)}`;
+            btnText.textContent = `Buy Now — $${totalPrice.toFixed(2)}`;
+        } else {
+            summary.textContent = '';
+            btnText.textContent = 'Buy Now — Secure Checkout';
+        }
+    }
+
+    // ── Prevent empty checkout + disable button on submit ──
     document.getElementById('buy-form').addEventListener('submit', function(e) {
-        const inputs = this.querySelectorAll('input[type="number"]');
-        const total = Array.from(inputs).reduce((sum, i) => sum + parseInt(i.value || 0), 0);
+        const inputs = this.querySelectorAll('.qty-field');
+        const total = Array.from(inputs).reduce((sum, i) => sum + (parseInt(i.value) || 0), 0);
         if (total === 0) {
             e.preventDefault();
-            alert('Please add at least one item before checking out.');
+            const firstAlert = document.getElementById('flash-messages');
+            firstAlert.innerHTML = `
+                <div class="alert alert-warning d-flex align-items-center gap-2 fade show">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <span>Please add at least one item before checking out.</span>
+                </div>`;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
         }
+        // Disable button to prevent double-submit
+        const btn = document.getElementById('buy-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Stripe…';
     });
 </script>
 {% endblock %}
