@@ -2,6 +2,7 @@
 
 A Django-based e-commerce app where users can browse 3 fixed products, enter quantities, pay with Stripe (test mode), and view their order history — all on a single page.
 
+⏱️ **Development Time:** Built in 5-6 hours.
 ---
 
 ## Live Demo Flow
